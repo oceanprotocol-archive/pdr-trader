@@ -37,19 +37,20 @@ def get_all_interesting_prediction_contracts():
             chunk_size,
         )
         offset += chunk_size
-        result = query_subgraph(query)
-        if "errors" in result:
-            raise AssertionError(result)
-        new_orders = result["data"]["predictContracts"]
-        if new_orders == []:
-            break
-        for order in new_orders:
-            contracts[order["id"]] = {
-                "name": order["token"]["name"],
-                "address": order["id"],
-                "symbol": order["token"]["symbol"],
-                "blocks_per_epoch": order["blocksPerEpoch"],
-                "blocks_per_subscription": order["blocksPerSubscription"],
-                "last_submited_epoch":0
-            }
+        try:
+            result = query_subgraph(query)
+            new_orders = result["data"]["predictContracts"]
+            if new_orders == []:
+                break
+            for order in new_orders:
+                contracts[order["id"]] = {
+                    "name": order["token"]["name"],
+                    "address": order["id"],
+                    "symbol": order["token"]["symbol"],
+                    "blocks_per_epoch": order["blocksPerEpoch"],
+                    "blocks_per_subscription": order["blocksPerSubscription"],
+                    "last_submited_epoch":0
+                }
+        except Exception as e:
+            return {}
     return contracts

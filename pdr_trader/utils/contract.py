@@ -1,8 +1,11 @@
 
 import json
 import os
+import glob
+
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
+from pathlib import Path
 from web3 import Web3, HTTPProvider, WebsocketProvider
 from web3.middleware import construct_sign_and_send_raw_middleware
 from os.path import expanduser
@@ -11,31 +14,25 @@ ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 
 home = expanduser("~")
 
+rpc_url = os.environ.get("RPC_URL")
+assert rpc_url is not None, "You must set RPC_URL environment variable"
 private_key = os.environ.get("PRIVATE_KEY")
 assert private_key is not None, "You must set PRIVATE_KEY environment variable"
 assert private_key.startswith("0x"), "Private key must start with 0x hex prefix"
 
 # instantiate Web3 instance
-w3 = Web3(Web3.HTTPProvider("http://127.0.0.1:8545"))
-private_key = os.environ.get("PRIVATE_KEY")
+w3 = Web3(Web3.HTTPProvider(rpc_url))
 account: LocalAccount = Account.from_key(private_key)
 owner = account.address
 w3.middleware_onion.add(construct_sign_and_send_raw_middleware(account))
 
 
-""" Temporary solution until we have ocean-contracts published in pypi"""
-f = open(home+'/.ocean/ocean-contracts/artifacts/contracts/templates/ERC20Template3.sol/ERC20Template3.json')
-data=json.load(f)
-abi = data['abi']
-f = open(home+'/.ocean/ocean-contracts/artifacts/contracts/pools/fixedRate/FixedRateExchange.sol/FixedRateExchange.json ')
-data=json.load(f)
-fre_abi = data['abi']
 
 
 class Token:
     def __init__(self, address):
         self.contract_address = w3.to_checksum_address(address)
-        self.contract_instance = w3.eth.contract(address=w3.to_checksum_address(address), abi=abi)
+        self.contract_instance = w3.eth.contract(address=w3.to_checksum_address(address), abi=get_contract_abi('ERC20Template3'))
 
     def allowance(self,account,spender):
         return self.contract_instance.functions.allowance(account,spender).call()
@@ -56,62 +53,88 @@ class Token:
 class FixedRate:
     def __init__(self, address):
         self.contract_address = w3.to_checksum_address(address)
-        self.contract_instance = w3.eth.contract(address=w3.to_checksum_address(address), abi=abi)
+        self.contract_instance = w3.eth.contract(address=w3.to_checksum_address(address), abi=get_contract_abi('FixedRateExchange'))
 
-    def get_dt_price(self,exchangeId):
+    def get_dt_price(self, exchangeId):
         return self.contract_instance.functions.calcBaseInGivenOutDT(exchangeId,w3.to_wei('1','ether'),0).call()
 
 
 class PredictorContract:
     def __init__(self, address):
         self.contract_address = w3.to_checksum_address(address)
-        self.contract_instance = w3.eth.contract(address=w3.to_checksum_address(address), abi=abi)
+        self.contract_instance = w3.eth.contract(address=w3.to_checksum_address(address), abi=get_contract_abi('ERC20Template3'))
 
     def is_valid_subscription(self):
-        return self.contract_instance.isValidSubscription(owner).call()
+        return self.contract_instance.functions.isValidSubscription(owner).call()
     
+    def get_empty_provider_fee(self):
+        return {
+            "providerFeeAddress": ZERO_ADDRESS,
+            "providerFeeToken": ZERO_ADDRESS,
+            "providerFeeAmount": 0,
+            "v": 0,
+            "r": 0,
+            "s": 0,
+            "validUntil": 0,
+            "providerData": 0,
+        }
+    def string_to_bytes32(self,data):
+        if len(data) > 32:
+            myBytes32 = data[:32]
+        else:
+            myBytes32 = data.ljust(32, '0')
+        return bytes(myBytes32, 'utf-8')
+
     def buy_and_start_subscription(self):
         """ Buys 1 datatoken and starts a subscription"""
         fixed_rates=self.get_exchanges()
+        if not fixed_rates:
+            return
         (fixed_rate_address,exchange_id) = fixed_rates[0]
         # get datatoken price
         exchange = FixedRate(fixed_rate_address)
-        (baseTokenAmount, oceanFeeAmount, publishMarketFeeAmount,consumeMarketFeeAmount) = FixedRate.get_dt_price(exchange_id)
-        token = Token(self.get_stake_token(self))
+        (baseTokenAmount, oceanFeeAmount, publishMarketFeeAmount,consumeMarketFeeAmount) = exchange.get_dt_price(exchange_id)
+        print(f"Price: {baseTokenAmount}")
+        stake_token=self.get_stake_token()
+        token = Token(stake_token)
+        token.approve(self.contract_address,baseTokenAmount)
+        print("approved")
         gasPrice = w3.eth.gas_price
+        provider_fees = self.get_empty_provider_fee()
+        zero = 0
         try:
-            tx = self.contract_instance.functions.buyFromFreAndOrder(
-                (
-                    owner,
-                    0,
-                    (
-                        ZERO_ADDRESS,
-                        ZERO_ADDRESS,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                    ),
-                    (   
-                        ZERO_ADDRESS,
-                        ZERO_ADDRESS,
-                        0
-                    ),
-                ),
-                (
-                    w3.to_checksum_address(fixed_rate_address),
-                    exchange_id,
-                    baseTokenAmount,
-                    0,
-                    ZERO_ADDRESS,
-                ),
-                {"from":owner,"gasPrice":gasPrice},
-            )
+            orderParams = (
+                            owner,
+                            0,
+                            (
+                                ZERO_ADDRESS,
+                                ZERO_ADDRESS,
+                                0,
+                                0,
+                                self.string_to_bytes32(''),
+                                self.string_to_bytes32(''),
+                                provider_fees["validUntil"],
+                                w3.to_bytes(b'') ,
+                            ),
+                            (   
+                                ZERO_ADDRESS,
+                                ZERO_ADDRESS,
+                                0
+                            ),
+                        )
+            freParams=(
+                            w3.to_checksum_address(fixed_rate_address),
+                            w3.to_bytes(exchange_id),
+                            baseTokenAmount,
+                            0,
+                            ZERO_ADDRESS,
+                        )
+                    
+            tx = self.contract_instance.functions.buyFromFreAndOrder(orderParams,freParams).transact({"from":owner,"gasPrice":gasPrice})
             receipt = w3.eth.wait_for_transaction_receipt(tx)
             return receipt
-        except:
+        except Exception as e:
+            print(e)
             return None
 
     def get_exchanges(self):
@@ -128,8 +151,47 @@ class PredictorContract:
         if not self.is_valid_subscription():
             print("Buying a new subscription")
             self.buy_and_start_subscription()
-        (nom, denom) = self.contract_instance.functions.getAggPredval(block).call({"from":owner})
-        return nom/denom    
+        try:
+            (nom, denom) = self.contract_instance.functions.getAggPredval(block).call({"from":owner})
+            return nom/denom    
+        except Exception as e:
+            print(e)
+            return None
 
+def get_contract_abi(contract_name):
+    """Returns the abi for a contract name."""
+    path = get_contract_filename(contract_name)
 
+    if not path.exists():
+        raise TypeError("Contract name does not exist in artifacts.")
 
+    with open(path) as f:
+        data = json.load(f)
+        return data['abi']
+
+def get_contract_filename(contract_name):
+    """Returns abi for a contract."""
+    contract_basename = f"{contract_name}.json"
+
+    # first, try to find locally
+    address_filename = os.getenv("ADDRESS_FILE")
+    path = None
+    if address_filename:
+        address_dir = os.path.dirname(address_filename)
+        root_dir = os.path.join(address_dir, "..")
+        os.chdir(root_dir)
+        paths = glob.glob(f"**/{contract_basename}", recursive=True)
+        if paths:
+            assert len(paths) == 1, "had duplicates for {contract_basename}"
+            path = paths[0]
+            path = Path(path).expanduser().resolve()
+            assert (
+                path.exists()
+            ), f"Found path = '{path}' via glob, yet path.exists() is False"
+            return path
+    # didn't find locally, so use use artifacts lib
+    #path = os.path.join(os.path.dirname(artifacts.__file__), "", contract_basename)
+    #path = Path(path).expanduser().resolve()
+    #if not path.exists():
+    #    raise TypeError(f"Contract '{contract_name}' not found in artifacts.")
+    return path
