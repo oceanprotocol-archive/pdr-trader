@@ -146,6 +146,9 @@ class PredictorContract:
     def get_current_epoch(self):
         return self.contract_instance.functions.curEpoch().call()
     
+    def get_blocksPerEpoch(self):
+        return self.contract_instance.functions.blocksPerEpoch().call()
+    
     def get_agg_predval(self, block):
         """ check subscription"""
         if not self.is_valid_subscription():
