@@ -97,8 +97,8 @@ class PredictorContract:
         print(f"Price: {baseTokenAmount}")
         stake_token=self.get_stake_token()
         token = Token(stake_token)
-        token.approve(self.contract_address,baseTokenAmount)
-        print("approved")
+        approved = token.approve(self.contract_address,baseTokenAmount)
+        print(f"Approval tx: {approved}. Buying subscription..")
         gasPrice = w3.eth.gas_price
         provider_fees = self.get_empty_provider_fee()
         zero = 0
@@ -149,12 +149,16 @@ class PredictorContract:
     def get_agg_predval(self, block):
         """ check subscription"""
         if not self.is_valid_subscription():
-            print("Buying a new subscription")
+            print("Buying a new subscription...")
             self.buy_and_start_subscription()
         try:
             (nom, denom) = self.contract_instance.functions.getAggPredval(block).call({"from":owner})
-            return nom/denom    
+            print(f" Got {nom} and {denom}")
+            if denom==0:
+                return None
+            return nom/denom
         except Exception as e:
+            print("Failed to call getAggPredval")
             print(e)
             return None
 

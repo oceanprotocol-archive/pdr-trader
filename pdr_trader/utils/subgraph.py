@@ -6,10 +6,10 @@ import web3
 
 def query_subgraph(query):
     subgraph_url = os.getenv("SUBGRAPH_URL")
-    request = requests.post(subgraph_url, "", json={"query": query})
+    request = requests.post(subgraph_url, "", json={"query": query}, timeout=1.5)
     if request.status_code != 200:
         # pylint: disable=broad-exception-raised
-        raise Exception(f"Query failed. Return code is {request.status_code}\n{query}")
+        raise Exception(f"Query failed. Url: {subgraph_url}. Return code is {request.status_code}\n{query}")
     result = request.json()
     return result
 
@@ -52,5 +52,6 @@ def get_all_interesting_prediction_contracts():
                     "last_submited_epoch":0
                 }
         except Exception as e:
+            print(e)
             return {}
     return contracts
