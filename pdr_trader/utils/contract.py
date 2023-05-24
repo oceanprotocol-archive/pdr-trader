@@ -64,6 +64,18 @@ class FixedRate:
     def get_dt_price(self, exchangeId):
         return self.contract_instance.functions.calcBaseInGivenOutDT(exchangeId,w3.to_wei('1','ether'),0).call()
 
+    def buy_dt(self,exchange_id,baseTokenAmount):
+        gasPrice = w3.eth.gas_price
+        try:
+            tx = self.contract_instance.functions.buyDT(exchange_id, w3.to_wei('1','ether'),baseTokenAmount, ZERO_ADDRESS, 0).transact({"from":owner,"gasPrice":gasPrice})
+            print(f"Bought 1 DT tx: {tx.hex()}")
+            receipt = w3.eth.wait_for_transaction_receipt(tx)
+            return receipt
+        except Exception as e:
+            print(e)
+            return None
+             
+
 
 class PredictorContract:
     def __init__(self, address):
@@ -102,14 +114,16 @@ class PredictorContract:
         # get datatoken price
         exchange = FixedRate(fixed_rate_address)
         (baseTokenAmount, oceanFeeAmount, publishMarketFeeAmount,consumeMarketFeeAmount) = exchange.get_dt_price(exchange_id)
+        print(f"Buying 1.0 DT with price: {baseTokenAmount}")
+        # approve
+        self.token.approve(fixed_rate_address,baseTokenAmount)
+        # buy 1 DT
+        exchange.buy_dt(exchange_id,baseTokenAmount)
         gasPrice = w3.eth.gas_price
         provider_fees = self.get_empty_provider_fee()
-        print(f"Buying a subscription, cost is: {baseTokenAmount}")
         try:
-            self.token.approve(self.contract_address,baseTokenAmount)
-            print(f"Approved, going further")
-            orderParams = (
-                            owner,
+            print("Calling startOrder")
+            tx = self.contract_instance.functions.startOrder(owner,
                             0,
                             (
                                 ZERO_ADDRESS,
@@ -125,17 +139,7 @@ class PredictorContract:
                                 ZERO_ADDRESS,
                                 ZERO_ADDRESS,
                                 0
-                            ),
-                        )
-            freParams=(
-                            w3.to_checksum_address(fixed_rate_address),
-                            w3.to_bytes(exchange_id),
-                            baseTokenAmount,
-                            0,
-                            ZERO_ADDRESS,
-                        )
-            print("Calling buyFrom")
-            tx = self.contract_instance.functions.buyFromFreAndOrder(orderParams,freParams).transact({"from":owner,"gasPrice":gasPrice})
+                            )).transact({"from":owner,"gasPrice":gasPrice})
             print(f"Subscription tx: {tx.hex()}")
             receipt = w3.eth.wait_for_transaction_receipt(tx)
             return receipt
