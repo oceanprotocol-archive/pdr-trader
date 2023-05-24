@@ -1,8 +1,8 @@
 #!/bin/bash
 if [ "${WAIT_FOR_SUBGRAPH}" = "true" ]
 then
+  echo "Waiting for subgraph to be ready...."
   while [ ! -f "/ocean-subgraph/ready" ]; do
-    echo "Waiting for subgraph to be ready...."
     sleep 2
   done
 fi
