@@ -2,6 +2,7 @@
 import json
 import os
 import glob
+import time
 
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
@@ -21,7 +22,8 @@ assert private_key is not None, "You must set PRIVATE_KEY environment variable"
 assert private_key.startswith("0x"), "Private key must start with 0x hex prefix"
 
 # instantiate Web3 instance
-w3 = Web3(Web3.HTTPProvider(rpc_url))
+w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': 60}))
+
 account: LocalAccount = Account.from_key(private_key)
 owner = account.address
 w3.middleware_onion.add(construct_sign_and_send_raw_middleware(account))
@@ -43,12 +45,16 @@ class Token:
     def approve(self,spender,amount):
         gasPrice = w3.eth.gas_price
         #print(f"Approving {amount} for {spender} on contract {self.contract_address}")
+        tx = None
         try:
             tx = self.contract_instance.functions.approve(spender,amount).transact({"from":owner,"gasPrice":gasPrice})
+            print(f"Approval tx: {tx.hex()}.")
             receipt = w3.eth.wait_for_transaction_receipt(tx)
+            print(f"Got receipt")
             return receipt
-        except:
-            return None
+        except Exception as e:
+            print(e)
+            return tx
 
 class FixedRate:
     def __init__(self, address):
@@ -63,6 +69,8 @@ class PredictorContract:
     def __init__(self, address):
         self.contract_address = w3.to_checksum_address(address)
         self.contract_instance = w3.eth.contract(address=w3.to_checksum_address(address), abi=get_contract_abi('ERC20Template3'))
+        stake_token=self.get_stake_token()
+        self.token = Token(stake_token)
 
     def is_valid_subscription(self):
         return self.contract_instance.functions.isValidSubscription(owner).call()
@@ -94,15 +102,12 @@ class PredictorContract:
         # get datatoken price
         exchange = FixedRate(fixed_rate_address)
         (baseTokenAmount, oceanFeeAmount, publishMarketFeeAmount,consumeMarketFeeAmount) = exchange.get_dt_price(exchange_id)
-        print(f"Price: {baseTokenAmount}")
-        stake_token=self.get_stake_token()
-        token = Token(stake_token)
-        approved = token.approve(self.contract_address,baseTokenAmount)
-        print(f"Approval tx: {approved}. Buying subscription..")
         gasPrice = w3.eth.gas_price
         provider_fees = self.get_empty_provider_fee()
-        zero = 0
+        print(f"Buying a subscription, cost is: {baseTokenAmount}")
         try:
+            self.token.approve(self.contract_address,baseTokenAmount)
+            print(f"Approved, going further")
             orderParams = (
                             owner,
                             0,
@@ -129,8 +134,9 @@ class PredictorContract:
                             0,
                             ZERO_ADDRESS,
                         )
-                    
+            print("Calling buyFrom")
             tx = self.contract_instance.functions.buyFromFreAndOrder(orderParams,freParams).transact({"from":owner,"gasPrice":gasPrice})
+            print(f"Subscription tx: {tx.hex()}")
             receipt = w3.eth.wait_for_transaction_receipt(tx)
             return receipt
         except Exception as e:
@@ -154,7 +160,9 @@ class PredictorContract:
         if not self.is_valid_subscription():
             print("Buying a new subscription...")
             self.buy_and_start_subscription()
+            time.sleep(1)
         try:
+            print("Reading contract values...")
             (nom, denom) = self.contract_instance.functions.getAggPredval(block).call({"from":owner})
             print(f" Got {nom} and {denom}")
             if denom==0:

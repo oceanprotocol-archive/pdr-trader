@@ -1,4 +1,3 @@
-from threading import Thread
 from pdr_trader.utils.subgraph import get_all_interesting_prediction_contracts
 from pdr_trader.utils.contract import PredictorContract
 from trade import trade
@@ -18,12 +17,10 @@ def process_block(block):
         blocks_per_epoch = predictor_contract.get_blocksPerEpoch()
         blocks_till_epoch_end=epoch*blocks_per_epoch+blocks_per_epoch-block['number']
         print(f"\t{topic['name']} (at address {topic['address']} is at epoch {epoch}, blocks_per_epoch: {blocks_per_epoch}, blocks_till_epoch_end: {blocks_till_epoch_end}")
-        if epoch > topic['last_submited_epoch'] and epoch>2:
+        if epoch > topic['last_submited_epoch'] and epoch>0:
             topic['last_submited_epoch'] = epoch
             """ Let's get the prediction and trade it """
             prediction = predictor_contract.get_agg_predval(block['number'])
             print(f"Got {prediction}.")
             if prediction:
-                thr = Thread(target=trade, args=(topic,address, prediction,))
-                thr.start()
-    """ We don't need to wait for threads to finish """
+                trade(topic,address, prediction)
