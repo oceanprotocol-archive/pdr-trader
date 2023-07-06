@@ -1,3 +1,4 @@
 web3
 eth-account
 pathlib
+eth-keys
