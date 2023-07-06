@@ -6,12 +6,16 @@ import time
 
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
+from eth_keys import KeyAPI
+from eth_keys.backends import NativeECCBackend
+
 from pathlib import Path
 from web3 import Web3, HTTPProvider, WebsocketProvider
 from web3.middleware import construct_sign_and_send_raw_middleware
 from os.path import expanduser
 
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+keys = KeyAPI(NativeECCBackend)
 
 home = expanduser("~")
 
@@ -104,7 +108,30 @@ class PredictorContract:
         else:
             myBytes32 = data.ljust(32, '0')
         return bytes(myBytes32, 'utf-8')
-
+    def get_auth_signature(self):
+        valid_until = int(time.time()) + 3600
+        message_hash = w3.solidity_keccak(
+        ["address", "uint256"],
+        [
+            owner,
+            valid_until
+        ],
+        )
+        pk = keys.PrivateKey(account.key)
+        prefix = "\x19Ethereum Signed Message:\n32"
+        signable_hash = w3.solidity_keccak(
+            ["bytes", "bytes"], [w3.to_bytes(text=prefix), w3.to_bytes(message_hash)]
+        )
+        signed = keys.ecdsa_sign(message_hash=signable_hash, private_key=pk)
+        auth = {
+            "userAddress": owner,
+            "v": (signed.v + 27) if signed.v <= 1 else signed.v,
+            "r": w3.to_hex(w3.to_bytes(signed.r).rjust(32, b"\0")),
+            "s": w3.to_hex(w3.to_bytes(signed.s).rjust(32, b"\0")),
+            "validUntil": valid_until,
+        }
+        return(auth)
+    
     def buy_and_start_subscription(self):
         """ Buys 1 datatoken and starts a subscription"""
         fixed_rates=self.get_exchanges()
@@ -114,16 +141,15 @@ class PredictorContract:
         # get datatoken price
         exchange = FixedRate(fixed_rate_address)
         (baseTokenAmount, oceanFeeAmount, publishMarketFeeAmount,consumeMarketFeeAmount) = exchange.get_dt_price(exchange_id)
-        print(f"Buying 1.0 DT with price: {baseTokenAmount}")
         # approve
-        self.token.approve(fixed_rate_address,baseTokenAmount)
+        self.token.approve(self.contract_instance.address,baseTokenAmount)
         # buy 1 DT
-        exchange.buy_dt(exchange_id,baseTokenAmount)
         gasPrice = w3.eth.gas_price
         provider_fees = self.get_empty_provider_fee()
         try:
             print("Calling startOrder")
-            tx = self.contract_instance.functions.startOrder(owner,
+            orderParams = (
+                            owner,
                             0,
                             (
                                 ZERO_ADDRESS,
@@ -139,7 +165,17 @@ class PredictorContract:
                                 ZERO_ADDRESS,
                                 ZERO_ADDRESS,
                                 0
-                            )).transact({"from":owner,"gasPrice":gasPrice})
+                            ),
+                        )
+            freParams=(
+                            w3.to_checksum_address(fixed_rate_address),
+                            w3.to_bytes(exchange_id),
+                            baseTokenAmount,
+                            0,
+                            ZERO_ADDRESS,
+                        )
+            print("Calling buyFrom")
+            tx = self.contract_instance.functions.buyFromFreAndOrder(orderParams,freParams).transact({"from":owner,"gasPrice":gasPrice})
             print(f"Subscription tx: {tx.hex()}")
             receipt = w3.eth.wait_for_transaction_receipt(tx)
             return receipt
@@ -167,7 +203,8 @@ class PredictorContract:
             time.sleep(1)
         try:
             print("Reading contract values...")
-            (nom, denom) = self.contract_instance.functions.getAggPredval(block).call({"from":owner})
+            auth = self.get_auth_signature()
+            (nom, denom) = self.contract_instance.functions.getAggPredval(block,auth).call({"from":owner})
             print(f" Got {nom} and {denom}")
             if denom==0:
                 return None
