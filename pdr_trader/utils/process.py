@@ -1,4 +1,4 @@
-from pdr_trader.utils.subgraph import get_all_interesting_prediction_contracts
+from pdr_utils.subgraph import get_all_interesting_prediction_contracts
 from pdr_trader.utils.contract import PredictorContract
 from trade import trade
 

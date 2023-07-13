@@ -15,16 +15,15 @@ For full flow see [README](https://github.com/oceanprotocol/pdr-trueval/blob/mai
 export RPC_URL=http://127.0.0.1:8545
 export SUBGRAPH_URL="http://172.15.0.15:8000/subgraphs/name/oceanprotocol/ocean-subgraph"
 export PRIVATE_KEY="xxx"
-export CONTRACTS_TO_PREDICT="[]"
 export STAKE_TOKENS="[]"
 ```
 where:
-  - CONTRACTS_TO_PREDICT = if not present or empty, it will fetch data from all existing template3 contracts deployed on the network.  There can be a lot and very expensive :) Narrow the scope with contract addresses
+  - you can also export SOURCE_FILTER, TIMEFRAME_FILTER, PAIR_FILTER *(comma-separated lists) to limit predictions based on NFT data. E.g. export PAIR_FILTER=eth-usdt,eth-btc
   - STAKE_TOKEN = combined with above, narrow scope only to template3 contracts that are using a specific list of STAKE_TOKENS (ie: Ocean). If not present or empty, will predict and stake everywhere :)
 
 Install requirements if needed
 ```bash
-pip install -r requirements.txt 
+pip install -r requirements.txt
 ```
 
 Start the trader:
@@ -34,16 +33,16 @@ python3 main.py
 
 ## Fork and customize
   The actual trade code is in trade.py.
-  
+
   We call trade function with 3 args:
    - topic:  this is ERC20.name
    - contract_address
    - direction:  this is the agg pred val
-   
+
 
   You need to change the function code and actually do some trades
 
 ## TO DO
-  - [ ]  - implement logic for STAK_TOKENS and CONTRACTS_TO_PREDICT
-  - [ ]  - check for balances 
+  - [ ]  - implement logic for STAK_TOKENS
+  - [ ]  - check for balances
   - [ ]  - improve approve/allowence flow
