@@ -18,7 +18,6 @@ export PRIVATE_KEY="xxx"
 export STAKE_TOKENS="[]"
 ```
 where:
-  - you can also export SOURCE_FILTER, TIMEFRAME_FILTER, PAIR_FILTER *(comma-separated lists) to limit predictions based on NFT data. E.g. export PAIR_FILTER=eth-usdt,eth-btc
   - STAKE_TOKEN = combined with above, narrow scope only to template3 contracts that are using a specific list of STAKE_TOKENS (ie: Ocean). If not present or empty, will predict and stake everywhere :)
 
 Install requirements if needed
@@ -31,18 +30,23 @@ Start the trader:
 python3 main.py
 ```
 
+## Additional ENV variables used to filter:
+
+ - PAIR_FILTER = if we do want to act upon only same pair, like  "BTC/USDT,ETH/USDT"
+ - TIMEFRAME_FILTER = if we do want to act upon only same timeframes, like  "5m,15m"
+ - SOURCE_FILTER = if we do want to act upon only same sources, like  "binance,kraken"
+ - OWNER_ADDRS = if we do want to act upon only same publishers, like  "0x123,0x124"
+
 ## Fork and customize
   The actual trade code is in trade.py.
 
   We call trade function with 3 args:
-   - topic:  this is ERC20.name
-   - contract_address
-   - direction:  this is the agg pred val
+   - topic:  this is pair object
+   - direction:  this is the agg pred val  ( 0 -> fully confident that goes down , 1 -> fully confident that goes up)
 
 
   You need to change the function code and actually do some trades
 
 ## TO DO
-  - [ ]  - implement logic for STAK_TOKENS
   - [ ]  - check for balances
   - [ ]  - improve approve/allowence flow
