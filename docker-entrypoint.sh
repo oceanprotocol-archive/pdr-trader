@@ -7,5 +7,7 @@ then
   done
 fi
 cd /pdr-trader/
+echo "Delaying startup for ${DELAYED_STARTUP} seconds.."
+sleep $DELAYED_STARTUP
 echo "Starting app..."
 /usr/local/bin/python -u main.py

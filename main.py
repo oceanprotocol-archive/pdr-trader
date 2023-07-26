@@ -21,7 +21,11 @@ def process_block(block):
     global topics
     """ Process each contract and see if we need to submit """
     if not topics:
-        topics = get_all_interesting_prediction_contracts()
+        topics = get_all_interesting_prediction_contracts(os.environ.get("SUBGRAPH_URL"),
+                                                          os.environ.get("PAIR_FILTER",None),
+                                                          os.environ.get("TIMEFRAME_FILTER",None),
+                                                          os.environ.get("SOURCE_FILTER",None),
+                                                          os.environ.get("OWNER_ADDRS",None))
     print(f"Got new block: {block['number']} with {len(topics)} topics")
     for address in topics:
         topic = topics[address]
@@ -37,7 +41,7 @@ def process_block(block):
             prediction = predictor_contract.get_agg_predval(block['number'])
             print(f"Got {prediction}.")
             if prediction is not None:
-                trade(topic,address, prediction)
+                trade(topic, prediction)
 
 
 def main():
